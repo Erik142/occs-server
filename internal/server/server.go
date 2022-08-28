@@ -35,19 +35,19 @@ func (s *OccsServer) ProcessMessage(client *client.OccsClient, messageType int, 
 	switch m.Type {
 	case message.Subscribe:
 		log.Default().Println(fmt.Sprintf("Subscribe: %s", m.Data))
-		s.Send(client, fmt.Sprintf("{\"response\": \"%s\"}", m.Data))
+		s.Broadcast(fmt.Sprintf("{\"from\": \"%s\", \"data\": \"%s\"}", client.Id, m.Data))
 		break
 	case message.Unsubscribe:
 		log.Default().Println(fmt.Sprintf("Unsubscribe: %s", m.Data))
-		s.Send(client, fmt.Sprintf("{\"response\": \"%s\"}", m.Data))
+		s.Broadcast(fmt.Sprintf("{\"from\": \"%s\", \"data\": \"%s\"}", client.Id, m.Data))
 		break
 	case message.Publish:
 		log.Default().Println(fmt.Sprintf("Publish: %s", m.Data))
-		s.Send(client, fmt.Sprintf("{\"response\": \"%s\"}", m.Data))
+		s.Broadcast(fmt.Sprintf("{\"from\": \"%s\", \"data\": \"%s\"}", client.Id, m.Data))
 		break
 	default:
 		log.Default().Println(fmt.Sprintf("Unrecognized message type: %s", m.Data))
-		s.Send(client, fmt.Sprintf("{\"response\": \"%s\"}", m.Data))
+		s.Broadcast(fmt.Sprintf("{\"from\": \"%s\", \"data\": \"%s\"}", client.Id, m.Data))
 		break
 	}
 }
@@ -77,6 +77,12 @@ func (s *OccsServer) Send(client *client.OccsClient, message string) {
 	client.Connection.WriteMessage(1, []byte(message))
 }
 
+func (s *OccsServer) Broadcast(message string) {
+	for _, c := range s.clients {
+		s.Send(c, message)
+	}
+}
+
 func webSocketHandler(ctx *gin.Context) {
 	upgrader.CheckOrigin = func(r *http.Request) bool {
 		return true
@@ -98,12 +104,14 @@ func webSocketHandler(ctx *gin.Context) {
 
 	// greet the new client
 	server.Send(&client, "Server: Welcome! Your ID is "+client.Id)
+	server.AddClient(&client)
 
 	// message handling
 	for {
 		messageType, p, err := conn.ReadMessage()
 		if err != nil {
 			server.RemoveClient(&client)
+			server.Broadcast(fmt.Sprintf("\"type\": \"client_disconnected\", \"data\": \"%s\"", client.Id))
 			return
 		}
 		server.ProcessMessage(&client, messageType, p)
